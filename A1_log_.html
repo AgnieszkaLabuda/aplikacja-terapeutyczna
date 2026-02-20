@@ -1,0 +1,2281 @@
+ <!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>MVP – presety terapeutyczne</title>
+  <style>
+    html, body { margin:0; padding:0; width:100%; height:100%; background:#000; overflow:hidden;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; color:#eee; }
+    #app { position:relative; width:100%; height:100%; }
+    canvas { position:absolute; inset:0; width:100%; height:100%; display:block; z-index:0; pointer-events:none; }
+    /* WSPÓLNY styl aktywnego przycisku (wszędzie tak samo) */
+:root{
+  --active-bg: #232323;
+  --accent-blue: #1e90ff;
+  --active-text: #ffffff;
+  --active-border: var(--accent-blue);
+  --active-glow: 0 0 0 1px rgba(30,144,255,0.55), 0 0 18px rgba(30,144,255,0.25);
+  /* Layout helpers: keep a consistent label column and label->controls gap
+     so all button-groups start on the same vertical line. */
+  --labelColW: 120px;
+  --labelGap: 20px; /* matches the visual gap in the PRESETY row */
+  --leftControlsW: min(520px, 56vw); /* fixed-ish width for left-side control groups */
+  --blockGap: 50px;
+}
+
+
+
+    .screen { position:absolute; inset:0; display:none; align-items:center; justify-content:center; flex-direction:column;
+      gap:16px; background:#000; z-index:10; }
+    .screen.active { display:flex; }
+
+    .btn { border:1px solid #444; background:#111; color:#eee; padding:14px 22px; border-radius:12px;
+      font-size:18px; cursor:pointer; user-select:none; min-width:220px; text-align:center; }
+  
+    .btn.primary { background:#1a1a1a; border-color:#888; }
+    
+
+    .panel { width:min(1100px, 94vw); border:1px solid #333; background:#0b0b0b; border-radius:16px; padding:18px;
+      box-shadow:0 10px 30px rgba(0,0,0,0.5); }
+
+    /* === UJEDNOLICENIE TYPOGRAFII PANELU: jedna czcionka i JEDEN rozmiar wszędzie === */
+    /* (dotyczy wyłącznie panelu ustawień; ekran startowy może mieć własny styl) */
+    .panel, .panel * {
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif !important;
+      font-size: 14px !important;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+    }
+
+    /* Nadpisania istniejących wyjątków typograficznych, żeby wszystko było identyczne */
+    .panel .btn,
+    .panel .pill,
+    .panel .seg,
+    .panel .trajbtn,
+    .panel .smallbtn,
+    .panel .label,
+    .panel .sub,
+    .panel .value,
+    .panel .hint {
+      font-size: 14px !important;
+      font-weight: 500;
+    }
+
+    /* Ikonki w przyciskach (↻, ∞ itd.) też trzymamy w tym samym rozmiarze */
+    .panel .seg .sym,
+    .panel .smallbtn .sym,
+    .panel .trajbtn .sym {
+      font-size: 14px !important;
+      line-height: 1;
+    }
+
+    .row { display:grid; grid-template-columns:1fr auto; align-items:center; gap:12px; margin:14px 0; }
+    .label { font-size:13px; color:#bbb; }
+    input[type="range"] { width:360px; }
+    .value { width:110px; text-align:right; color:#ddd; font-variant-numeric: tabular-nums; }
+
+    .toggle { display:inline-flex; gap:10px; align-items:center; color:#ddd; font-size:14px; }
+
+    .seg{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+}
+
+    .seg button{
+  background:#1c1c1c;
+  border:1px solid #4a4a4a;
+  border-radius:12px;
+  color:#eaeaea;
+  padding:10px 14px;
+  cursor:pointer;
+  font-size:14px;
+  white-space:nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+    .seg button.active{
+  background: var(--active-bg);
+  border: 1px solid var(--active-border);
+  color: var(--active-text);
+  box-shadow: var(--active-glow);
+  font-weight: 600;
+}
+
+
+
+    .seg button:disabled { opacity:0.45; cursor:default; }
+
+    .disabled { opacity:0.45; }
+
+    #overlay { position:absolute; top:12px; right:12px; display:none; gap:10px; align-items:center; padding:10px;
+      border-radius:14px; background:rgba(10,10,10,0.55); border:1px solid rgba(255,255,255,0.12);
+      backdrop-filter: blur(6px); z-index:20; }
+    #overlay.show { display:flex; }
+
+    .smallbtn { border:1px solid rgba(255,255,255,0.18); background:rgba(20,20,20,0.4); color:#eee;
+      padding:8px 10px; border-radius:12px; font-size:14px; cursor:pointer; user-select:none; }
+
+    .hint { font-size:12px; color:#888; margin-top:8px; text-align:center; max-width:860px; line-height:1.4; }
+
+    .traj-grid {
+      display: grid;
+      grid-template-columns: repeat(7, max-content);
+      gap: 8px 10px;
+      align-items: center;
+    }
+/* lepsza czytelność symboli typu ∞ */
+.trajbtn .sym{
+  display:inline-block;
+  width: 48px;           /* dopasuj: 44–60px */
+  text-align:center;
+  font-size: 18px;       /* dopasuj: 16–22px */
+  line-height: 1;
+  font-weight: 700;
+}
+
+    .traj-grid button.trajbtn{
+  background: #1c1c1c;
+  border: 1px solid #4a4a4a;
+  border-radius: 12px;
+  color: #eaeaea;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 14px;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+/* ∞ jako SVG – duże, równe i wyśrodkowane */
+#trajInfinity{
+  min-width: 90px;            /* możesz dać 78px jak koło, jeśli chcesz identycznie */
+}
+
+#trajInfinity .infIcon{
+  display: block;
+  width: 54px;                /* zwiększaj jeśli nadal za małe: np. 60–68px */
+  height: 24px;
+  margin: 0 auto;             /* idealne wyśrodkowanie */
+}
+
+/* WSPÓLNY HOVER/FOKUS dla wszystkich przycisków */
+.btn:hover, .btn:focus-visible,
+.seg button:hover, .seg button:focus-visible,
+.traj-grid button.trajbtn:hover, .traj-grid button.trajbtn:focus-visible,
+.preset-btn:hover, .preset-btn:focus-visible,
+.smallbtn:hover, .smallbtn:focus-visible{
+  background: var(--active-bg);
+  border: 1px solid var(--active-border);
+  box-shadow: var(--active-glow);
+  color: var(--active-text);
+}
+
+/* ujednolicenie szerokości dla okrąg i ∞ */
+#trajCircle{
+  min-width: 78px;
+}
+
+
+
+.traj-grid button.trajbtn.active{
+  background: var(--active-bg);
+  border: 1px solid var(--active-border);
+  color: var(--active-text);
+  box-shadow: var(--active-glow);
+  font-weight: 600;
+}
+
+
+
+        .traj-grid .traj-empty { width:1px; height:1px; }
+
+    /* Presety */
+    .preset-bar{
+      display:flex; gap:10px; flex-wrap:wrap; align-items:center;
+      padding:12px; border:1px solid #2b2b2b; background:#090909; border-radius:14px;
+    }
+    .preset-title{ font-size:12px; color:#eee; opacity:.95; margin-right:6px; letter-spacing:.06em; }
+
+    .preset-btn{
+  background: #1c1c1c;
+  border: 1px solid #4a4a4a;
+  border-radius: 12px;
+  color: #eaeaea;
+  padding: 9px 12px;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+    .preset-btn.active{
+  background: var(--active-bg);
+  border: 1px solid var(--active-border);
+  color: var(--active-text);
+  box-shadow: var(--active-glow);
+  font-weight: 600;
+}
+ 
+    .preset-note{ font-size:12px; color:#777; margin-top:8px; line-height:1.35; }
+  /* ====== MERGE UI (from indeks_wklejony) – only layout, no logic changes ====== */
+#screenSettings .panel{ /* expand to match new layout */
+  width: min(1380px, calc(100vw - 120px)) !important;
+  /* shrink-wrap height so bottom padding == top padding */
+  height: auto !important;
+  max-height: calc(100vh - 120px) !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+
+  padding: 40px !important;
+  margin: 0 auto !important;
+  box-sizing: border-box !important;
+
+  display: flex !important;
+  flex-direction: column !important;
+  gap: var(--blockGap) !important;
+}
+
+/* remove old heading/note spacing if present */
+#screenSettings .panel > .oldHeading,
+#screenSettings .preset-note{ display:none !important; }
+
+.presetRow{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:12px;
+}
+.presetLabel{
+  font-size:11px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:#eee;
+  opacity:.95;
+  margin-right:8px;
+}
+
+.presetRow .preset-btn{ margin:0 !important; }
+
+/* blocks */
+.block{ display:flex; flex-direction:column; gap:14px; }
+
+.line2col{
+  display:grid;
+  grid-template-columns: calc(var(--labelColW) + var(--labelGap) + var(--leftControlsW)) auto;
+  align-items:center;
+  gap:22px;
+}
+.leftCell{
+  display:grid;
+  grid-template-columns: var(--labelColW) var(--leftControlsW);
+  align-items:center;
+  column-gap: var(--labelGap);
+}
+.labelCaps{
+  font-size:11px;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  color:#eee;
+  opacity:.95;
+}
+
+.seg{ display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+.seg.nowrap{ flex-wrap:nowrap; }
+
+.rightCell{ justify-self:end; }
+
+/* WRACAMY do 3 kolumn, żeby zachować wyrównanie do prawej i długość suwaka */
+.sliderRow{
+  display:grid;
+  grid-template-columns: 190px 350px auto; /* label | suwak | wartość */
+  align-items:center;
+  column-gap:16px; /* odległość label -> suwak */
+}
+
+/* tu kontrolujesz tylko odległość SUWAK -> WARTOŚĆ */
+.sliderPack{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end; /* paczka „trzyma się” prawej */
+  gap:8px;                  /* odległość suwak–wartość */
+  min-width:0;
+}
+
+/* suwak ma się rozciągać w swojej kolumnie (260px) */
+.sliderPack input[type="range"]{
+  width:100%;
+  min-width:0;
+}
+
+/* wartość ciasna */
+.value{
+  width:72px !important;        /* albo 64px */
+  text-align:left !important;
+}
+
+
+/* input + value w jednej paczce obok siebie */
+.sliderPack{
+  display:flex;
+  align-items:center;
+  gap:8px; /* <-- tu sterujesz dystansem suwak–wartość */
+  min-width:0;
+}
+.sliderPack input[type="range"]{
+  flex:1;
+  min-width:0;
+}
+
+/* wartość: mniejsza szerokość i bliżej suwaka */
+.value{
+  width:72px !important;     /* było 110px */
+  text-align:left !important;/* było right */
+}
+   
+/* etykieta suwaka: 2 linie (etykieta + zakres poniżej) */
+.sliderLabel{
+  display:flex;
+  flex-direction:column;
+  align-items:flex-end;   /* trzyma jak było: do prawej */
+  text-align:right;
+  line-height:1.05;
+}
+
+/* zakres w nawiasie jako druga linia */
+.sliderLabel .sub{
+  display:block;          /* KLUCZ: łamie linię pod etykietę */
+  margin-top:2px;
+  font-size:12px;
+  opacity:.85;
+  letter-spacing:0;
+  text-transform:none;
+}
+
+#screenSettings input[type="range"]{ width:100% !important; }
+.value{ width:110px !important; }
+
+/* trajectory row */
+.trajRow{
+      display:grid;
+	  grid-template-columns: var(--labelColW) 1fr;
+      align-items:center;
+	  column-gap: var(--labelGap); /* jak PRESETY: label->przyciski */
+      margin-top: 12px;
+    }
+	.trajRow > .label{ width: var(--labelColW); }
+
+.trajRow .labelCaps{ justify-self:start; }
+.trajArea{ display:flex; justify-content:flex-start; align-items:center; }
+.traj-grid{
+  justify-content:flex-start !important;
+  gap:12px !important;
+}
+.trajbtn{
+  min-width:132px !important;
+  height:56px !important;
+  border-radius:14px !important;
+  padding:0 10px !important;
+  white-space:normal !important;
+  line-height:1.05 !important;
+}
+.trajbtn .infIcon{ width:40px; height:20px; }
+
+/* bottom buttons row aligned right in one line */
+.bottomActions{
+  display:flex;
+  justify-content:flex-end;
+  gap:18px;
+  margin-right: var(--actionsMR, 0px);
+}
+/* WSTECZ / START – pionowo i poziomo wyśrodkowany tekst */
+.bottomActions .btn{
+  min-width:132px;
+  height:56px;
+  padding:0 10px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  text-align:center;
+  line-height:1;
+}
+
+/* bezpieczeństwo: kasuje lokalne marginesy między blokami */
+.block{
+  margin-top: 0 !important;
+  margin-bottom: 0 !important;
+}
+
+
+
+/* ===== Czas i pasek postępu w oknie ćwiczenia ===== */
+#progressWrap{
+  position:absolute;
+  left:28px;
+  right:28px;
+  bottom:18px;
+  height:2px; /* ultracienki, ale widoczny */
+  background: rgba(255,255,255,0.08);
+  border-radius:999px;
+  overflow:hidden;
+  z-index:6;
+  pointer-events:none;
+}
+#progressBar{
+  height:100%;
+  width:0%;
+  background: rgba(200,200,200,0.38); /* subtelna szarość */
+  transition: width 120ms linear;
+}
+#app.isPaused #progressWrap{ display:none; }
+#pauseTime{
+  position:absolute;
+  left:50%;
+  top:46%;
+  transform:translate(-50%,-50%);
+  display:none;
+  z-index:30;
+  font-size:42px;
+  color: rgba(255,255,255,0.78);
+  letter-spacing: 2px;
+  font-variant-numeric: tabular-nums;
+  pointer-events:none;
+}
+
+/* Na pauzie: ukryj pasek, pokaż cyfry */
+#app.isPaused #progressWrap{ display:none; }
+#app.isPaused #pauseTime{ display:block; }
+
+/* ===== opóźnienie: wybór strony (lewa/prawa) ===== */
+.sliderLabelRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+
+.delaySideSwitch{
+  display:flex;
+  gap:6px;
+  align-items:center;
+}
+
+.delaySideSwitch button{
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.20);
+  border-radius: 8px;
+  padding: 4px 12px;
+  min-width: 52px;
+  font-size: 12px;
+  line-height: 1;
+  color: rgba(255,255,255,0.78);
+  cursor: pointer;
+  user-select: none;
+  transition: 0.15s;
+}
+
+.delaySideSwitch button.active{
+  border-color: var(--active-border);
+  box-shadow: var(--active-glow);
+  color: rgba(255,255,255,0.92);
+}
+
+.delaySideSwitch.disabled{
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+</style>
+</head>
+<body>
+<div id="app">
+  <canvas id="cv"></canvas>
+
+  <div id="screenStart" class="screen active">
+    <div style="display:flex;gap:14px;align-items:center;justify-content:center;margin-top:18px">
+  <div style="display:flex;gap:10px;align-items:center;background:#111;padding:14px 18px;border-radius:18px;border:1px solid #333;">
+    <div style="color:#bbb;font-size:14px;letter-spacing:0.08em;">ID</div>
+    <input id="clinicIdSplash" type="text" placeholder="__ __" inputmode="numeric" pattern="[0-9]{2}" maxlength="2"
+      style="width:150px;padding:10px 12px;border-radius:12px;border:1px solid #4a4a4a;background:#111;color:#eee;letter-spacing:0.25em;text-align:center;"/>
+  </div>
+  <div class="btn" id="btnSettings">USTAWIENIA</div>
+</div>
+<div style="text-align:center;font-size:12px;color:#888;margin-top:10px">
+  wpisz numer ID (np. 01) i przejdź do ustawień
+</div>
+    <div class="hint">
+      Skróty: <b>Spacja</b> - PAUZA,  <b>ESC</b> -  wyjście z fullscreen,  <b>u</b> - USTAWIENIA  
+    </div>
+  </div>
+
+  
+<div id="screenSettings" class="screen">
+  <div class="panel panelA1">
+
+    <!-- PRESETY -->
+    <div class="presetRow">
+      <div class="presetLabel">PRESETY</div>
+      <button class="preset-btn" id="p1" type="button">1. regulacja</button>
+      <button class="preset-btn" id="p2" type="button">2. śledzenie</button>
+      <button class="preset-btn" id="p3" type="button">3. synchronia</button>
+      <button class="preset-btn" id="p4" type="button">4. przeciwlegle</button>
+      <button class="preset-btn" id="p5" type="button">5. przerzutność</button>
+    </div>
+
+    <!-- BLOK NAD TRAJEKTORIĄ: 3 linie -->
+    <div class="block blockTop">
+
+      <!-- Bodziec + Wielkość -->
+      <div class="line2col">
+        <div class="leftCell">
+          <div class="label labelCaps">BODZIEC</div>
+          <div class="seg">
+            <button id="stimDot" class="active" type="button">● kropka</button>
+            <button id="stimRing" type="button">○ obwód</button>
+            <button id="stimSquare" type="button">□ kwadrat</button>
+          </div>
+        </div>
+        <div class="rightCell">
+          <div class="sliderRow">
+  <div class="sliderLabel">WIELKOŚĆ BODŹCA <span class="sub">(1.0–10.0)</span></div>
+  <div class="sliderPack">
+    <input id="sizeMul" type="range" min="1" max="10" value="1" step="0.5"/>
+    <div class="value" id="sizeVal">1.0</div>
+  </div>
+</div>
+
+        </div>
+      </div>
+
+      <!-- Tryb + Prędkość -->
+      <div class="line2col">
+        <div class="leftCell">
+          <div class="label labelCaps">TRYB</div>
+          <div class="seg">
+            <button id="mode1" class="active" type="button">1 figura</button>
+            <button id="mode2" type="button">2 figury</button>
+          </div>
+        </div>
+        <div class="rightCell">
+          <div class="sliderRow">
+  <div class="sliderLabel">PRĘDKOŚĆ</div>
+  <div class="sliderPack">
+    <input id="speed" type="range" min="1" max="10" value="4" step="0.5"/>
+    <div class="value" id="speedVal">4.0</div>
+  </div>
+</div>
+
+        </div>
+      </div>
+
+      <!-- 2 figury relacja + opóźnienie (w tej samej linii) -->
+      <div class="line2col" id="pairRow">
+        <div class="leftCell">
+          <div class="label labelCaps">2 FIGURY<br/>RELACJA</div>
+          <div class="seg nowrap">
+            <button id="pairSame" class="active" type="button">identyczny</button>
+            <button id="pairMirror" type="button">lustrzany</button>
+            <button id="pairOpposite" type="button">przeciwlegle</button>
+            <button id="pairDelay" type="button">opóźnienie</button>
+          </div>
+        </div>
+        <div class="rightCell" id="delayRow">
+          <div class="sliderRow delayRow">
+            <div class="sliderLabelRow">
+              <div class="sliderLabel"></div>
+              <div class="delaySideSwitch disabled" id="delaySideSwitch" aria-label="wybór strony opóźnienia">
+                <button id="delayLeftBtn" type="button">lewa</button>
+                <button id="delayRightBtn" type="button" class="active">prawa</button>
+              </div>
+            </div>
+            <div class="sliderPack">
+              <input id="delayMs" type="range" min="0" max="30" value="0" step="0.5"/>
+              <div class="value" id="delayVal">0.0 s</div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- TRAJEKTORIA -->
+    <div class="trajRow">
+      <div class="label labelCaps">TRAJEKTORIA</div>
+      <div class="trajArea">
+        <div class="traj-grid">
+          <!-- RZĄD 1 -->
+          <button id="trajVLeft"  class="trajbtn" type="button">pion<br/>lewo</button>
+          <button id="trajVMid"   class="trajbtn" type="button">pion<br/>środek</button>
+          <button id="trajVRight" class="trajbtn" type="button">pion<br/>prawo</button>
+          <button id="trajDiag1"  class="trajbtn" type="button">przekątna<br/>\</button>
+          <button id="trajCircle" class="trajbtn active" type="button">okrąg</button>
+          <button id="trajHourH"  class="trajbtn" type="button">klepsydra<br/>pion</button>
+          <button id="trajDiagsX" class="trajbtn" type="button">przekątne X<br/>pauza</button>
+
+          <!-- RZĄD 2 -->
+          <button id="trajHBot" class="trajbtn" type="button">poziom<br/>dół</button>
+          <button id="trajHMid" class="trajbtn" type="button">poziom<br/>środek</button>
+          <button id="trajHTop" class="trajbtn" type="button">poziom<br/>góra</button>
+          <button id="trajDiag2" class="trajbtn" type="button">przekątna<br/>/</button>
+          <button id="trajInfinity" class="trajbtn" type="button" aria-label="nieskończoność">
+            <svg class="infIcon" viewBox="0 0 120 60" aria-hidden="true">
+              <path d="M20,30 C20,12 45,12 60,30 C75,48 100,48 100,30 C100,12 75,12 60,30 C45,48 20,48 20,30"
+                fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+
+          <button id="trajHourV" class="trajbtn" type="button">klepsydra<br/>poziom</button>
+          <div class="traj-empty"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BLOK POD TRAJEKTORIĄ: 2 linie -->
+    <div class="block blockBottom">
+
+      <!-- Kierunek + Zakres -->
+      <div class="line2col" id="trajScaleRow">
+        <div class="leftCell">
+          <div class="label labelCaps">KIERUNEK</div>
+          <div class="seg">
+            <button id="dirCw" class="active" type="button">⟳ zgodnie</button>
+            <button id="dirCcw" type="button">⟲ przeciwnie</button>
+          </div>
+        </div>
+        <div class="rightCell">
+          <div class="sliderRow">
+  <div class="sliderLabel">ZAKRES RUCHU <span class="sub">(1.0–10.0)</span></div>
+  <div class="sliderPack">
+    <input id="trajScale" type="range" min="1" max="10" value="8.0" step="0.5"/>
+    <div class="value" id="trajScaleVal">8.0</div>
+  </div>
+</div>
+
+        </div>
+      </div>
+
+      <!-- Pauza (tylko X) – wymagane przez logikę -->
+      <div class="line2col" id="pauseRow" style="display:none;">
+        <div class="leftCell">
+          <div class="label labelCaps">PAUZA (TYLKO X)</div>
+          <div></div>
+        </div>
+        <div class="rightCell">
+          <div class="sliderRow">
+  <div class="sliderLabel">PAUZA</div>
+  <div class="sliderPack">
+    <input id="pauseMs" type="range" min="0" max="10000" value="0" step="500"/>
+    <div class="value" id="pauseVal">0 s</div>
+  </div>
+</div>
+
+        </div>
+      </div>
+
+      <!-- Dźwięk + Czas ćwiczenia -->
+      <div class="line2col" id="timeRow">
+        <div class="leftCell">
+          <div class="label labelCaps">DŹWIĘK</div>
+          <div class="seg">
+            <button id="soundOn" class="active" type="button">WŁĄCZONY</button>
+            <button id="soundOff" type="button">WYŁĄCZONY</button>
+            <input id="sound" type="checkbox" checked style="display:none"/>
+          </div>
+        </div>
+        <div class="rightCell">
+          <div class="sliderRow">
+  <div class="sliderLabel">CZAS ĆWICZENIA <span class="sub">(15–300 s)</span></div>
+  <div class="sliderPack">
+    <input id="timeSlider" type="range" min="15" max="300" value="30" step="5"/>
+    <div class="value" id="timeVal">30 s</div>
+  </div>
+</div>
+
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Akcje -->
+    <div class="bottomActions">
+      <div class="btn" id="btnExportLog" style="margin-right:auto">EKSPORT LOGU</div>
+      <div class="btn" id="btnBack">WSTECZ</div>
+      <div class="btn primary spotlight" id="btnStartFromSettings">START</div>
+    </div>
+
+  </div>
+</div>
+
+  <div id="overlay">
+    <div class="smallbtn" id="btnPause">PAUZA</div>
+    <div class="smallbtn" id="btnStop">USTAWIENIA</div>
+  </div>
+
+  <!-- Subtelny pasek postępu (tylko podczas ćwiczenia; znika na pauzie) -->
+  <div id="progressWrap" aria-hidden="true">
+    <div id="progressBar" aria-hidden="true"></div>
+  </div>
+
+  <!-- Czas w cyfrach – tylko podczas pauzy -->
+  <div id="pauseTime" aria-hidden="true"></div>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const state = {
+  _endedBy: "",
+    screen: "start",
+    running: false,
+    paused: false,
+
+    sessionDurationSec: 30,
+
+    mode: 1,
+    pairMode: "same",   // same | mirror | opposite | delay
+    delayMs: 0,
+	    delaySide: "right", // right | left (aktywne tylko gdy pairMode === "delay")
+
+    stimulus: "dot",    // dot | ring | square
+    trajectory: "circle", // circle | infinity | vLeft | vMid | vRight | hBot | hMid | hTop | diag1 | diag2 | hourV | hourH | diagsx
+    pauseMs: 0,
+
+    speed: 4.0,         // 1..10
+    sizeMul: 1.0,       // 1..10
+    trajScale: 10.0,    // 1..10 (koło)
+
+    dir: +1,
+    sound: true,
+
+    time: 0,
+    lastBeepBucket: null,
+
+    activePresetId: "p1"
+  };
+
+// --- UI: pokaż/ukryj pasek postępu (toggle klawiszem P) ---
+state.showProgress = true;
+
+function updateProgressVisibility() {
+  const el = document.getElementById("progressWrap");
+  if (!el) return;
+  // Pokazuj tylko w ekranie sesji; dodatkowo pozwól użytkownikowi ukryć
+  const shouldShow = (state.screen === "session") && !!state.showProgress;
+  el.style.display = shouldShow ? "" : "none";
+}
+
+window.addEventListener("keydown", (e) => {
+  if (!e.key) return;
+  if (e.key.toLowerCase() === "p") {
+    state.showProgress = !state.showProgress;
+    updateProgressVisibility();
+  }
+});
+
+
+  const cv = document.getElementById("cv");
+  const ctx = cv.getContext("2d", { alpha: false });
+
+  const screenStart = document.getElementById("screenStart");
+  const screenSettings = document.getElementById("screenSettings");
+  const overlay = document.getElementById("overlay");
+
+  const btnSettings = document.getElementById("btnSettings");
+// ===== PILOT: ID gabinetu + LOG (lokalnie) =====
+const LOG_KEY = "A1_PILOT_LOG_V1";
+const CLINIC_KEY = "A1_PILOT_CLINIC_ID_V1";
+
+function normalizeClinicId(input){
+  const digits = String(input||"").replace(/\D+/g,"").slice(0,2);
+  if(!digits) return "";
+  return "GAB-" + digits.padStart(2,"0");
+}
+function getClinicId(){
+  try { return (localStorage.getItem(CLINIC_KEY) || "").trim(); }
+  catch { return ""; }
+}
+function setClinicId(digits){
+  try { localStorage.setItem(CLINIC_KEY, normalizeClinicId(digits)); }
+  catch {}
+}
+
+function loadLog(){
+  try { return JSON.parse(localStorage.getItem(LOG_KEY) || "[]"); }
+  catch { return []; }
+}
+function saveLog(items){
+  try { localStorage.setItem(LOG_KEY, JSON.stringify(items)); }
+  catch {}
+}
+function clearLog(){
+  try { localStorage.removeItem(LOG_KEY); } catch {}
+}
+function addLogEntry(entry){
+  const items = loadLog();
+  items.push(entry);
+  saveLog(items);
+}
+
+function currentExerciseId(){
+  if (state.activePresetId) return `preset:${state.activePresetId}`;
+  return `traj:${state.trajectory || "unknown"}`;
+}
+
+function logSession(endedBy){
+  const durationS = Math.max(0, Math.round(state.time || 0));
+  addLogEntry({
+    clinic_id: getClinicId() || "UNKNOWN",
+    ts_iso: new Date().toISOString(),
+    exercise_id: currentExerciseId(),
+    duration_s: durationS,
+    ended_by: endedBy || "stop"
+  });
+}
+
+function downloadLogCSV(){
+  const items = loadLog();
+  if (!items.length) { alert("Brak danych do eksportu."); return; }
+
+  const header = ["clinic_id","ts_iso","exercise_id","duration_s","ended_by"];
+  const rows = items.map(x => [x.clinic_id||"UNKNOWN", x.ts_iso, x.exercise_id, String(x.duration_s), x.ended_by||""]);
+  const csv = [header, ...rows]
+    .map(r => r.map(v => `"${String(v).replaceAll('"','""')}"`).join(","))
+    .join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `a1_pilot_log_${(getClinicId()||"UNKNOWN").replace(/[^A-Za-z0-9_-]+/g,"-")}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function downloadLogCSVAndClear(){
+  downloadLogCSV();
+  clearLog();
+}
+
+// Splash: dwucyfrowe ID (nie wypełniamy automatycznie)
+const clinicIdSplash = document.getElementById("clinicIdSplash");
+if (clinicIdSplash) {
+  clinicIdSplash.value = "";
+  clinicIdSplash.addEventListener("input", () => {
+    clinicIdSplash.value = clinicIdSplash.value.replace(/\D+/g, "").slice(0, 2);
+  });
+  clinicIdSplash.addEventListener("blur", () => {
+    const d = clinicIdSplash.value.replace(/\D+/g, "").slice(0,2);
+    clinicIdSplash.value = d.length === 0 ? "" : d.padStart(2, "0");
+  });
+}
+
+// Wymuś ID przed wejściem w ustawienia (jeśli nie ma zapisanego)
+btnSettings.addEventListener("click", (e) => {
+  const raw = (clinicIdSplash?.value || "").trim();
+  const digits = raw.replace(/\D+/g, "").slice(0,2);
+  const storedDigits = String(getClinicId()||"").replace(/\D+/g,"").slice(0,2);
+
+  if (!digits) {
+    if (storedDigits.length === 2) return; // już ustawione wcześniej
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    alert("Wpisz dwucyfrowy numer ID (np. 01).");
+    return;
+  }
+  if (digits.length !== 2) {
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    alert("Wpisz dwucyfrowy numer ID (np. 01).");
+    return;
+  }
+  setClinicId(digits);
+}, true);
+
+  
+
+  const btnBack = document.getElementById("btnBack");
+  const btnExportLog = document.getElementById("btnExportLog");
+  if (btnExportLog) btnExportLog.addEventListener("click", () => downloadLogCSVAndClear());
+
+  const btnStartFromSettings = document.getElementById("btnStartFromSettings");
+  // settings spotlight: domyślnie START, hover przenosi na WSTECZ
+function setSettingsSpotlight(which){
+  btnStartFromSettings.classList.toggle("spotlight", which === "start");
+  btnBack.classList.toggle("spotlight", which === "back");
+}
+setSettingsSpotlight("start");
+// hover przenosi podświetlenie
+btnBack.addEventListener("mouseenter", () => setSettingsSpotlight("back"));
+btnBack.addEventListener("mouseleave", () => setSettingsSpotlight("start"));
+
+btnStartFromSettings.addEventListener("mouseenter", () => setSettingsSpotlight("start"));
+btnStartFromSettings.addEventListener("mouseleave", () => setSettingsSpotlight("start"));
+
+// klawiatura (tab/focus)
+btnBack.addEventListener("focus", () => setSettingsSpotlight("back"));
+btnBack.addEventListener("blur", () => setSettingsSpotlight("start"));
+
+btnStartFromSettings.addEventListener("focus", () => setSettingsSpotlight("start"));
+btnStartFromSettings.addEventListener("blur", () => setSettingsSpotlight("start"));
+
+
+
+  const p1 = document.getElementById("p1");
+  const p2 = document.getElementById("p2");
+  const p3 = document.getElementById("p3");
+  const p4 = document.getElementById("p4");
+  const p5 = document.getElementById("p5");
+  const presetButtons = [p1,p2,p3,p4,p5];
+
+  const mode1 = document.getElementById("mode1");
+  const mode2 = document.getElementById("mode2");
+
+  const pairRow = document.getElementById("pairRow");
+  const pairSame = document.getElementById("pairSame");
+  const pairMirror = document.getElementById("pairMirror");
+  const pairOpposite = document.getElementById("pairOpposite");
+  const pairDelay = document.getElementById("pairDelay");
+
+  const delayRow = document.getElementById("delayRow");
+  const delayMs = document.getElementById("delayMs");
+  const delayVal = document.getElementById("delayVal");
+	  const delaySideSwitch = document.getElementById("delaySideSwitch");
+	  const delayLeftBtn = document.getElementById("delayLeftBtn");
+	  const delayRightBtn = document.getElementById("delayRightBtn");
+
+  const stimDot = document.getElementById("stimDot");
+  const stimRing = document.getElementById("stimRing");
+  const stimSquare = document.getElementById("stimSquare");
+
+  // Trajectory buttons
+  const trajVLeft  = document.getElementById("trajVLeft");
+  const trajVMid   = document.getElementById("trajVMid");
+  const trajVRight = document.getElementById("trajVRight");
+
+  const trajCircle = document.getElementById("trajCircle");
+  const trajInfinity = document.getElementById("trajInfinity");
+
+  const trajDiag1 = document.getElementById("trajDiag1");
+  const trajDiag2 = document.getElementById("trajDiag2");
+
+  const trajHourV = document.getElementById("trajHourV");
+  const trajHourH = document.getElementById("trajHourH");
+
+  const trajDiagsX = document.getElementById("trajDiagsX");
+
+  const trajHBot = document.getElementById("trajHBot");
+  const trajHMid = document.getElementById("trajHMid");
+  const trajHTop = document.getElementById("trajHTop");
+
+  const trajScaleRow = document.getElementById("trajScaleRow");
+  const trajScale = document.getElementById("trajScale");
+  const trajScaleVal = document.getElementById("trajScaleVal");
+
+  const pauseRow = document.getElementById("pauseRow");
+  const pauseMs = document.getElementById("pauseMs");
+  const pauseVal = document.getElementById("pauseVal");
+
+  const timeSlider = document.getElementById("timeSlider");
+  const timeVal = document.getElementById("timeVal");
+
+  const speed = document.getElementById("speed");
+  const speedVal = document.getElementById("speedVal");
+
+  const sizeMul = document.getElementById("sizeMul");
+  const sizeVal = document.getElementById("sizeVal");
+
+  const dirCw = document.getElementById("dirCw");
+  const dirCcw = document.getElementById("dirCcw");
+
+  const sound = document.getElementById("sound");
+
+  
+
+// UI buttons for sound ON/OFF (keeps original checkbox logic)
+const soundOnBtn = document.getElementById("soundOn");
+const soundOffBtn = document.getElementById("soundOff");
+const setSoundUI = (on) => {
+  if (sound) sound.checked = !!on;
+  state.sound = !!on;
+  if (soundOnBtn) soundOnBtn.classList.toggle("active", !!on);
+  if (soundOffBtn) soundOffBtn.classList.toggle("active", !on);
+};
+if (soundOnBtn) soundOnBtn.addEventListener("click", () => setSoundUI(true));
+if (soundOffBtn) soundOffBtn.addEventListener("click", () => setSoundUI(false));
+const btnPause = document.getElementById("btnPause");
+  const btnStop = document.getElementById("btnStop");
+
+  // audio
+  let audioCtx = null;
+  const ensureAudio = () => (audioCtx ||= new (window.AudioContext || window.webkitAudioContext)());
+  function beep() {
+    if (!state.sound) return;
+    ensureAudio();
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    const o = audioCtx.createOscillator();
+    const g = audioCtx.createGain();
+    o.type = "sine";
+    o.frequency.value = 880;
+    const now = audioCtx.currentTime;
+    g.gain.setValueAtTime(0.0001, now);
+    g.gain.exponentialRampToValueAtTime(0.12, now + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, now + 0.08);
+    o.connect(g); g.connect(audioCtx.destination);
+    o.start(now); o.stop(now + 0.09);
+  }
+
+  // utils
+  const clamp = (x,a,b) => Math.max(a, Math.min(b,x));
+  const smoothstep = (p) => p*p*(3-2*p);
+
+
+  
+
+function fmtSecFromMsHalf(ms){
+  const s = Math.round(ms/500)*0.5;
+  return s.toFixed(1).replace(".0","") + " s";
+}
+function fmtMMSS(sec){
+    sec = Math.max(0, Math.ceil(sec));
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return String(m).padStart(2,'0') + ":" + String(s).padStart(2,'0');
+  }
+
+  function setProgress01(p){
+    const bar = document.getElementById("progressBar");
+    if(!bar) return;
+    const clamped = Math.max(0, Math.min(1, p));
+    bar.style.width = (clamped * 100).toFixed(2) + "%";
+  }
+
+  function updateProgressUI(){
+    updateProgressVisibility();
+    if(state.screen !== "session") { setProgress01(0); return; }
+    const total = Math.max(1, Number(state.sessionDurationSec) || 30);
+    const p = Math.min(1, state.time / total);
+    setProgress01(p);
+  }
+
+  function updatePauseTimeUI(){
+    const el = document.getElementById("pauseTime");
+    if(!el) return;
+    const total = Math.max(1, Number(state.sessionDurationSec) || 30);
+    const left = Math.max(0, total - state.time);
+    el.textContent = `${fmtMMSS(left)} / ${fmtMMSS(total)}`;
+  }
+
+
+  // Align all right-side sliders so their values never go beyond
+  // the right edge of the last TRAJEKTORIA button ("przekątne X pauza").
+  function alignRightControlsToTrajectory(){
+    const settings = document.getElementById("screenSettings");
+    if (!settings) return;
+
+    const trajBtn = document.getElementById("trajDiagsX");
+    if (!trajBtn) return;
+
+    const rightCells = settings.querySelectorAll(".line2col .rightCell");
+    if (!rightCells || rightCells.length === 0) return;
+
+    const trajRight = trajBtn.getBoundingClientRect().right;
+    let worstRight = -Infinity;
+
+    rightCells.forEach(rc => {
+      const r = rc.getBoundingClientRect().right;
+      if (r > worstRight) worstRight = r;
+    });
+
+    const pad = 2; // small safety margin (px)
+    const shift = Math.min(0, (trajRight - pad) - worstRight); // negative => move left
+
+    rightCells.forEach(rc => {
+      rc.style.transform = shift ? `translateX(${shift}px)` : "";
+    });
+  }
+
+
+  function setActive(btns, active) {
+    btns.forEach(b => b.classList.toggle("active", b === active));
+  }
+
+  function setScreen(name) {
+    state.screen = name;
+    screenStart.classList.toggle("active", name === "start");
+
+    screenSettings.classList.toggle("active", name === "settings");
+    overlay.classList.toggle("show", name === "session");
+  // etykieta przycisku w trakcie ćwiczenia
+  if (typeof btnStop !== "undefined" && btnStop) {
+    btnStop.textContent = (name === "session") ? "USTAWIENIA" : "USTAWIENIA";
+  }
+    if (name === "settings") {
+      requestAnimationFrame(() => { fitPanelWidthToTrajectory(); alignRightControlsToTrajectory(); alignBottomActionsToTrajRight(); });
+    }
+
+    if (name !== "session") {
+      state.running = false;
+      state.paused = false;
+      btnPause.textContent = "PAUZA";
+      document.getElementById("app")?.classList.remove("isPaused");
+      updateProgressUI();
+    }
+  }
+
+  function resize() {
+    const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+    cv.width  = Math.floor(window.innerWidth * dpr);
+    cv.height = Math.floor(window.innerHeight * dpr);
+    fitPanelWidthToTrajectory();
+    alignRightControlsToTrajectory();
+    alignBottomActionsToTrajRight();
+  }
+  window.addEventListener("resize", resize);
+
+  function clear() {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0,0,cv.width,cv.height);
+  }
+
+  function drawDivider() {
+    if (state.mode !== 2) return;
+    const W=cv.width, H=cv.height;
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,255,255,0.08)";
+    ctx.lineWidth = Math.max(2, Math.min(W,H)*0.0025);
+    ctx.beginPath();
+    ctx.moveTo(W*0.5, 0);
+    ctx.lineTo(W*0.5, H);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function speedPxPerSec() {
+    return 120 + (state.speed - 1) * (400 / 9);
+  }
+
+  // bodziec: 1.0–10.0 => bardzo mały .. duży
+  function stimulusRadiusRatio() {
+    const rMin = 0.004;
+    const rMax = 0.112;
+    const t = (state.sizeMul - 1.0) / 9.0;
+    return rMin + clamp(t, 0, 1) * (rMax - rMin);
+  }
+
+  function setStroke(minSide) {
+    ctx.lineWidth = Math.max(2, minSide * 0.004);
+    ctx.strokeStyle = "#e8e8e8";
+    ctx.fillStyle = "#e8e8e8";
+  }
+
+  function drawStimulus(x,y,minSide) {
+    const r = minSide * stimulusRadiusRatio();
+    setStroke(minSide);
+    if (state.stimulus === "dot") {
+      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+    } else if (state.stimulus === "ring") {
+      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.stroke();
+    } else {
+      ctx.beginPath(); ctx.rect(x-r,y-r,r*2,r*2); ctx.stroke();
+    }
+  }
+
+  // Bezpieczne pole zależne od bodźca (minimalne kurczenie: m = baza + r + pad)
+  function regionCorners(region) {
+    const { x0, y0, w, h } = region;
+    const minSide = Math.min(w, h);
+
+    // bazowy bezpieczny margines zależny od bodźca
+    const rStimPx = minSide * stimulusRadiusRatio();
+    const mBase = minSide * 0.03;
+    const pad = Math.max(2, minSide * 0.01);
+    const m = mBase + rStimPx + pad;
+
+    // SAFE (maksymalny obszar pracy)
+    const left0 = x0 + m;
+    const right0 = x0 + w - m;
+    const top0 = y0 + m;
+    const bottom0 = y0 + h - m;
+
+    // Zakres ruchu (trajScale) działa dla WSZYSTKICH trajektorii:
+    // 1.0..10.0 => zawężamy/poszerzamy obszar pracy wokół środka regionu
+    const t = clamp((state.trajScale - 1.0) / 9.0, 0, 1);
+
+    // minimalny zakres (żeby nie robić "prawie punkt w środku")
+    const minFrac = 0.18; // 0.12–0.25; 0.18 jest bezpiecznie używalne
+    const frac = minFrac + t * (1.0 - minFrac);
+
+    const cx = x0 + w * 0.5;
+    const cy = y0 + h * 0.5;
+
+    const halfW0 = (right0 - left0) * 0.5;
+    const halfH0 = (bottom0 - top0) * 0.5;
+
+    const halfW = Math.max(2, halfW0 * frac);
+    const halfH = Math.max(2, halfH0 * frac);
+
+    const left = cx - halfW;
+    const right = cx + halfW;
+    const top = cy - halfH;
+    const bottom = cy + halfH;
+
+    return {
+      minSide, m,
+      left, right, top, bottom,
+      TL:{x:left,y:top}, TR:{x:right,y:top}, BL:{x:left,y:bottom}, BR:{x:right,y:bottom},
+      cx, cy
+    };
+  }
+
+  function circleOmega() {
+    return 0.6 + (state.speed - 1) * (2.6 / 9);
+  }
+  function infinityOmega() {
+    return 0.55 + (state.speed - 1) * (2.3 / 9);
+  }
+
+  function circleRadiusPx(region) {
+    const c = regionCorners(region);
+
+    const safeHalfW = (c.right - c.left) * 0.5;
+    const safeHalfH = (c.bottom - c.top) * 0.5;
+    const radMax = Math.max(2, Math.min(safeHalfW, safeHalfH));
+
+    const radMin = Math.max(2, radMax * 0.22);
+
+    const t = (state.trajScale - 1.0) / 9.0;
+    const rad = radMin + clamp(t, 0, 1) * (radMax - radMin);
+
+    return { rad };
+  }
+
+  function circlePos(region, tSec) {
+    const c = regionCorners(region);
+    const omega = circleOmega();
+    const ang = state.dir * omega * tSec;
+    const cr = circleRadiusPx(region);
+    return { x: c.cx + cr.rad*Math.cos(ang), y: c.cy + cr.rad*Math.sin(ang), minSide: c.minSide };
+  }
+
+  // ∞ – łagodna ósemka (lemniskata Bernoulliego), spłaszczona, nie "ciągnie" w rogi
+  function infinityPos(region, tSec) {
+    const c = regionCorners(region);
+
+    const safeHalfW = (c.right - c.left) * 0.5;
+    const safeHalfH = (c.bottom - c.top) * 0.5;
+
+    // skala z suwaka 1..10 -> 0.10..1.00 (żeby przy 1 coś było widać)
+const scale = Math.max(0.10, Math.min(1.0, state.trajScale / 10));
+
+const xAmp = Math.max(2, safeHalfW * 0.94 * scale);
+const yAmp = Math.max(2, safeHalfH * 0.72 * scale);
+
+
+    const omega = infinityOmega();
+    const t = state.dir * omega * tSec;
+
+    const s = Math.sin(t);
+    const co = Math.cos(t);
+    const denom = 1 + s*s;
+
+    const nx = (co) / denom;
+    const ny = (s * co) / denom;
+
+    const x = c.cx + xAmp * nx;
+    const y = c.cy + (2 * yAmp) * ny;
+
+    return { x, y, minSide: c.minSide };
+  }
+
+  function singleDiagPos(region, tSec, which) {
+    const c = regionCorners(region);
+    const A = (which === 1) ? c.TL : c.TR;
+    const B = (which === 1) ? c.BR : c.BL;
+
+    const L = Math.hypot(B.x - A.x, B.y - A.y);
+    const v = speedPxPerSec();
+    const segDur = clamp(L / v, 0.35, 8.0);
+    const period = 2 * segDur;
+
+    let tt = tSec;
+    if (state.dir < 0) tt = -tt;
+    const u = ((tt % period) + period) % period;
+
+    if (u < segDur) {
+      const p = smoothstep(u / segDur);
+      return { x: A.x + (B.x - A.x)*p, y: A.y + (B.y - A.y)*p, minSide: c.minSide };
+    } else {
+      const p = smoothstep((u - segDur) / segDur);
+      return { x: B.x + (A.x - B.x)*p, y: B.y + (A.y - B.y)*p, minSide: c.minSide };
+    }
+  }
+
+  function linePos(region, tSec, axis, pos01) {
+    const c = regionCorners(region);
+    const v = speedPxPerSec();
+
+    if (axis === "v") {
+      const x = c.left + (c.right - c.left) * pos01;
+      const A = { x, y: c.top };
+      const B = { x, y: c.bottom };
+      const L = Math.hypot(B.x - A.x, B.y - A.y);
+      const segDur = clamp(L / v, 0.35, 8.0);
+      const period = 2 * segDur;
+
+      let tt = tSec;
+      if (state.dir < 0) tt = -tt;
+      const u = ((tt % period) + period) % period;
+
+      if (u < segDur) {
+        const p = smoothstep(u / segDur);
+        return { x: A.x, y: A.y + (B.y - A.y)*p, minSide: c.minSide };
+      } else {
+        const p = smoothstep((u - segDur) / segDur);
+        return { x: B.x, y: B.y + (A.y - B.y)*p, minSide: c.minSide };
+      }
+    } else {
+      const y = c.bottom + (c.top - c.bottom) * pos01;
+      const A = { x: c.left, y };
+      const B = { x: c.right, y };
+      const L = Math.hypot(B.x - A.x, B.y - A.y);
+      const segDur = clamp(L / v, 0.35, 8.0);
+      const period = 2 * segDur;
+
+      let tt = tSec;
+      if (state.dir < 0) tt = -tt;
+      const u = ((tt % period) + period) % period;
+
+      if (u < segDur) {
+        const p = smoothstep(u / segDur);
+        return { x: A.x + (B.x - A.x)*p, y: A.y, minSide: c.minSide };
+      } else {
+        const p = smoothstep((u - segDur) / segDur);
+        return { x: B.x + (A.x - B.x)*p, y: B.y, minSide: c.minSide };
+      }
+    }
+  }
+
+  function diagsXPos(region, tSec) {
+    const c = regionCorners(region);
+    const TL=c.TL, TR=c.TR, BL=c.BL, BR=c.BR;
+    const L = Math.hypot(BR.x - TL.x, BR.y - TL.y);
+    const v = speedPxPerSec();
+    const segDur = clamp(L / v, 0.35, 8.0);
+    const pauseSec = clamp(Math.round(state.pauseMs / 500) * 0.5, 0, 10);
+    const period = 2*(segDur + pauseSec);
+
+    let tt = tSec;
+    if (state.dir < 0) tt = -tt;
+    const u = ((tt % period) + period) % period;
+
+    if (u < segDur) {
+      const p = smoothstep(u / segDur);
+      return { x: TL.x + (BR.x-TL.x)*p, y: TL.y + (BR.y-TL.y)*p, minSide:c.minSide, segDur, pauseSec, period };
+    }
+    if (u < segDur + pauseSec) {
+      return { x: BR.x, y: BR.y, minSide:c.minSide, segDur, pauseSec, period };
+    }
+    const u2 = u - (segDur + pauseSec);
+    if (u2 < segDur) {
+      const p = smoothstep(u2 / segDur);
+      return { x: TR.x + (BL.x-TR.x)*p, y: TR.y + (BL.y-TR.y)*p, minSide:c.minSide, segDur, pauseSec, period };
+    }
+    return { x: BL.x, y: BL.y, minSide:c.minSide, segDur, pauseSec, period };
+  }
+
+  function hourglassPos(region, tSec, variant) {
+    const c = regionCorners(region);
+    const TL=c.TL, TR=c.TR, BL=c.BL, BR=c.BR;
+
+    let pts = (variant === "hourV")
+      ? [TL, BR, TR, BL, TL]
+      : [TR, BL, BR, TL, TR];
+
+    if (state.dir < 0) pts = [...pts].reverse();
+
+    const segs = [];
+    let total = 0;
+    for (let i=0;i<pts.length-1;i++){
+      const a=pts[i], b=pts[i+1];
+      const L = Math.hypot(b.x-a.x, b.y-a.y);
+      segs.push({a,b,L});
+      total += L;
+    }
+
+    const v = speedPxPerSec();
+    const period = clamp(total / v, 0.8, 20.0);
+
+    const u = ((tSec % period) + period) % period;
+    let dist = u * v;
+
+    for (const s of segs) {
+      if (dist <= s.L) {
+        const p = (s.L===0) ? 0 : smoothstep(dist/s.L);
+        return { x: s.a.x + (s.b.x-s.a.x)*p, y: s.a.y + (s.b.y-s.a.y)*p, minSide: c.minSide };
+      }
+      dist -= s.L;
+    }
+    const last = pts[pts.length-1];
+    return { x:last.x, y:last.y, minSide:c.minSide };
+  }
+
+  function mirrorXInRegion(region, x) {
+    const cx = region.x0 + region.w * 0.5;
+    return cx - (x - cx);
+  }
+
+	  function leftTimeOffsetSec() {
+	    if (state.mode !== 2) return 0;
+	    if (state.pairMode !== "delay") return 0;
+	    return (state.delaySide === "left") ? (state.delayMs / 1000) : 0;
+	  }
+
+	  function rightTimeOffsetSec() {
+	    if (state.mode !== 2) return 0;
+	    if (state.pairMode !== "delay") return 0;
+	    return (state.delaySide === "right") ? (state.delayMs / 1000) : 0;
+	  }
+
+  function trajectoryPeriodSec(region){
+  switch (state.trajectory){
+    case "circle": {
+      const omega = circleOmega();
+      return (Math.PI*2) / omega;
+    }
+    case "infinity": {
+      const omega = infinityOmega();
+      return (Math.PI*2) / omega;
+    }
+    case "vLeft":  return linePeriodSec(region, "v", 0.0);
+    case "vMid":   return linePeriodSec(region, "v", 0.5);
+    case "vRight": return linePeriodSec(region, "v", 1.0);
+    case "hBot":   return linePeriodSec(region, "h", 0.0);
+    case "hMid":   return linePeriodSec(region, "h", 0.5);
+    case "hTop":   return linePeriodSec(region, "h", 1.0);
+    case "diag1":  return diagPeriodSec(region, 1);
+    case "diag2":  return diagPeriodSec(region, 2);
+    case "diagsx": return diagsXPeriodSec(region);
+    case "hourV":  return hourglassPeriodSec(region, "hourV");
+    case "hourH":  return hourglassPeriodSec(region, "hourH");
+    default:       return (Math.PI*2) / circleOmega();
+  }
+}
+
+function oppositeTimeOffsetSec(region){
+  // "Przeciwległe" = start w punktach przeciwnych tej samej trajektorii:
+  // offset o połowę cyklu. Działa też dla X+pauza (start w przeciwległych narożnikach i obie w ruchu).
+  const period = trajectoryPeriodSec(region);
+  return period ? (period / 2) : 0;
+}
+
+function linePeriodSec(region, axis, pos01){
+  const c = regionCorners(region);
+  const v = speedPxPerSec();
+  if (axis === "v"){
+    const x = c.left + (c.right - c.left) * pos01;
+    const A = { x, y: c.top };
+    const B = { x, y: c.bottom };
+    const L = Math.hypot(B.x - A.x, B.y - A.y);
+    const segDur = clamp(L / v, 0.35, 8.0);
+    return 2 * segDur;
+  } else {
+    const y = c.bottom + (c.top - c.bottom) * pos01;
+    const A = { x: c.left, y };
+    const B = { x: c.right, y };
+    const L = Math.hypot(B.x - A.x, B.y - A.y);
+    const segDur = clamp(L / v, 0.35, 8.0);
+    return 2 * segDur;
+  }
+}
+
+function diagPeriodSec(region, which){
+  const c = regionCorners(region);
+  const A = (which === 1) ? c.TL : c.TR;
+  const B = (which === 1) ? c.BR : c.BL;
+  const L = Math.hypot(B.x - A.x, B.y - A.y);
+  const v = speedPxPerSec();
+  const segDur = clamp(L / v, 0.35, 8.0);
+  return 2 * segDur;
+}
+
+function diagsXPeriodSec(region){
+  const c = regionCorners(region);
+  const TL=c.TL, BR=c.BR;
+  const L = Math.hypot(BR.x - TL.x, BR.y - TL.y);
+  const v = speedPxPerSec();
+  const segDur = clamp(L / v, 0.35, 8.0);
+  const pauseSec = clamp(Math.round(state.pauseMs / 500) * 0.5, 0, 10);
+  return 2 * (segDur + pauseSec);
+}
+
+function hourglassPeriodSec(region, variant){
+  const c = regionCorners(region);
+  const TL=c.TL, TR=c.TR, BL=c.BL, BR=c.BR;
+  let pts = (variant === "hourV")
+    ? [TL, BR, TR, BL, TL]
+    : [TR, BL, BR, TL, TR];
+
+  const segs = [];
+  let total = 0;
+  for (let i=0;i<pts.length-1;i++){
+    const a=pts[i], b=pts[i+1];
+    const L = Math.hypot(b.x-a.x, b.y-a.y);
+    segs.push({a,b,L});
+    total += L;
+  }
+
+  const v = speedPxPerSec();
+  return clamp(total / v, 0.8, 20.0);
+}
+
+
+	  function updateDelaySideUI() {
+	    if (!delaySideSwitch || !delayLeftBtn || !delayRightBtn) return;
+	    const enabled = (state.mode === 2) && (state.pairMode === "delay");
+	    delaySideSwitch.classList.toggle("disabled", !enabled);
+	    delayLeftBtn.disabled = !enabled;
+	    delayRightBtn.disabled = !enabled;
+
+	    delayLeftBtn.classList.toggle("active", enabled && state.delaySide === "left");
+	    delayRightBtn.classList.toggle("active", enabled && state.delaySide === "right");
+	  }
+
+  function updatePairUI() {
+  const isPair = (state.mode === 2);
+
+  // cała sekcja relacji tylko dla 2 figur
+  pairRow.style.display = isPair ? "" : "none";
+
+  // opóźnienie: też tylko dla 2 figur
+  delayRow.style.display = isPair ? "" : "none";
+
+  // reset gdy wracamy do 1 figury
+  if (!isPair) {
+    state.pairMode = "same";
+    state.delayMs = 0;
+	    state.delaySide = "right";
+    setActive([pairSame, pairMirror, pairOpposite, pairDelay], pairSame);
+    delayMs.disabled = true;
+	    updateDelaySideUI();
+    return;
+  }
+
+  // --- poniżej tylko logika dla 2 figur ---
+
+  const showDelay = (state.pairMode === "delay");
+  delayMs.disabled = !showDelay;
+	  updateDelaySideUI();
+
+  // przeciwległe dostępne dla wszystkich trajektorii
+  pairOpposite.disabled = false;
+
+  if (state.pairMode === "opposite") {
+    // nic do walidacji
+  }
+}
+
+  // Dopasuj szerokość panelu tak, aby najbardziej na prawo wysuniętym elementem
+  // była prawa krawędź przycisku "przekątne X / pauza" (trajDiagsX),
+  // przy zachowaniu bezpiecznych marginesów od krawędzi okna.
+  function fitPanelWidthToTrajectory(){
+    const settings = document.getElementById("screenSettings");
+    if (!settings) return;
+    const panel = settings.querySelector(".panel");
+    const trajBtn = document.getElementById("trajDiagsX");
+    if (!panel || !trajBtn) return;
+
+    // element etykiety "TRAJEKTORIA" (punkt odniesienia po lewej)
+    const trajLabel = Array.from(panel.querySelectorAll(".labelCaps"))
+      .find(el => (el.textContent || "").trim().toUpperCase() === "TRAJEKTORIA");
+
+    const cs = getComputedStyle(panel);
+    const padL = parseFloat(cs.paddingLeft) || 0;
+    const padR = padL; // chcemy symetrię: prawy margines = lewy
+
+    // upewnij się, że paddingi są równe (wpływa na późniejsze obliczenia)
+    panel.style.paddingRight = Math.round(padR) + "px";
+
+    const panelRect = panel.getBoundingClientRect();
+    const trajRect  = trajBtn.getBoundingClientRect();
+    const labelRect = trajLabel ? trajLabel.getBoundingClientRect() : null;
+
+    // Jeśli mamy etykietę, ustawiamy szerokość tak, aby:
+    // (1) prawa krawędź "trajDiagsX" była najbardziej na prawo,
+    // (2) dystans: [TRAEKTORIA → lewa krawędź panelu] == [trajDiagsX → prawa krawędź panelu]
+    let desiredW;
+    if (labelRect){
+      const contentW = trajRect.right - labelRect.left; // od lewej krawędzi napisu do prawej krawędzi przycisku
+      desiredW = contentW + padL + padR;
+    } else {
+      // fallback: klasyczne dopasowanie do prawej krawędzi przycisku
+      desiredW = (trajRect.right - panelRect.left) + padR;
+    }
+
+    // Zachowaj marginesy wokół panelu (ok. 60px z lewej i prawej)
+    const maxWByViewport = Math.max(600, window.innerWidth - 120);
+    desiredW = Math.min(desiredW, maxWByViewport);
+
+    // Nie przekraczaj limitu
+    desiredW = Math.min(desiredW, 1380);
+
+    panel.style.width = Math.round(desiredW) + "px";
+    panel.style.maxWidth = Math.round(desiredW) + "px";
+  }
+
+
+  function alignBottomActionsToTrajRight(){
+    const settings = document.getElementById("screenSettings");
+    if (!settings) return;
+    const panel = settings.querySelector(".panel");
+    const trajBtn = document.getElementById("trajDiagsX");
+    const actions = settings.querySelector(".bottomActions");
+    if (!panel || !trajBtn || !actions) return;
+
+    // reset to measure natural (right-aligned) position
+    actions.style.setProperty("--actionsMR", "0px");
+
+    const targetRight = trajBtn.getBoundingClientRect().right;
+    const actionsRect = actions.getBoundingClientRect();
+
+    // if actions are to the right of target -> push left by adding right margin
+    const delta = actionsRect.right - targetRight;
+    const mr = Math.max(0, Math.round(delta));
+
+    actions.style.setProperty("--actionsMR", mr + "px");
+  }
+
+
+
+
+  function updatePauseUI() {
+  const isX = (state.trajectory === "diagsx");
+
+  // pauza tylko dla przekątnych X
+  pauseRow.style.display = isX ? "" : "none";
+
+  // reset wartości, gdy opuszczamy X
+  if (!isX) {
+    state.pauseMs = 0;
+    pauseMs.value = 0;
+    pauseVal.textContent = fmtSecFromMsHalf(state.pauseMs);
+  }
+}
+
+
+  function maybeBeep(derivedForX) {
+    if (!state.sound) return;
+
+    if (state.trajectory === "circle") {
+      const omega = circleOmega();
+      const ang = ((state.dir * omega * state.time) % (Math.PI*2) + Math.PI*2) % (Math.PI*2);
+      const bucket = Math.floor(ang / (Math.PI/2));
+      if (state.lastBeepBucket === null) state.lastBeepBucket = bucket;
+      if (bucket !== state.lastBeepBucket) { state.lastBeepBucket = bucket; beep(); }
+      return;
+    }
+
+    if (state.trajectory === "diagsx" && derivedForX) {
+      const { period, segDur, pauseSec } = derivedForX;
+      const tt = (state.dir < 0) ? -state.time : state.time;
+      const u = ((tt % period) + period) % period;
+
+      let bucket = 0;
+      if (u < segDur) bucket = 0;
+      else if (u < segDur + pauseSec) bucket = 1;
+      else if (u < segDur + pauseSec + segDur) bucket = 2;
+      else bucket = 3;
+
+      if (state.lastBeepBucket === null) state.lastBeepBucket = bucket;
+      if (bucket !== state.lastBeepBucket) {
+        state.lastBeepBucket = bucket;
+        if (bucket === 0 || bucket === 2) beep();
+      }
+    }
+  }
+
+  function drawScene() {
+    clear();
+    if (state.screen !== "session") return;
+
+    const W=cv.width, H=cv.height;
+    const regions = (state.mode === 1)
+      ? [{x0:0,y0:0,w:W,h:H}]
+      : [{x0:0,y0:0,w:W*0.5,h:H}, {x0:W*0.5,y0:0,w:W*0.5,h:H}];
+
+// --- CZAS DLA 2 FIGUR ---
+// Opóźnienie: obie figury widoczne od startu, ale opóźniona "stoi" w punkcie startu
+const delaySec = (state.mode === 2 && state.pairMode === "delay") ? (state.delayMs / 1000) : 0;
+
+let tL = state.time;
+let tR = state.time;
+
+if (state.mode === 2 && state.pairMode === "delay" && delaySec > 0) {
+  if (state.delaySide === "left") {
+    // lewa opóźniona
+    tL = (state.time < delaySec) ? 0 : (state.time - delaySec);
+    tR = state.time;
+  } else {
+    // prawa opóźniona (domyślnie)
+    tR = (state.time < delaySec) ? 0 : (state.time - delaySec);
+    tL = state.time;
+  }
+}
+
+// Przeciwległe: realizowane jako "lustrzane odwrotnie" (odbicie punktowe w obrębie prawego regionu)
+
+    for (let i=0;i<regions.length;i++){
+      const region = regions[i];
+      const t = (i===0) ? tL : tR;
+
+      let pos = null;
+      let derivedX = null;
+
+      switch (state.trajectory) {
+        case "vLeft":  pos = linePos(region, t, "v", 0.0); break;
+        case "vMid":   pos = linePos(region, t, "v", 0.5); break;
+        case "vRight": pos = linePos(region, t, "v", 1.0); break;
+
+        case "hBot": pos = linePos(region, t, "h", 0.0); break;
+        case "hMid": pos = linePos(region, t, "h", 0.5); break;
+        case "hTop": pos = linePos(region, t, "h", 1.0); break;
+
+        case "diag1": pos = singleDiagPos(region, t, 1); break;
+        case "diag2": pos = singleDiagPos(region, t, 2); break;
+
+        case "circle": pos = circlePos(region, t); break;
+        case "infinity": pos = infinityPos(region, t); break;
+
+        case "hourV": pos = hourglassPos(region, t, "hourV"); break;
+        case "hourH": pos = hourglassPos(region, t, "hourH"); break;
+
+        case "diagsx": pos = diagsXPos(region, t); derivedX = pos; break;
+
+        default: pos = circlePos(region, t);
+      }
+
+      if (state.mode === 2 && i === 1 && state.pairMode === "mirror") {
+        pos.x = mirrorXInRegion(region, pos.x);
+      }
+
+      if (state.mode === 2 && i === 1 && state.pairMode === "opposite") {
+        // odbicie punktowe w obrębie prawego regionu (odwrotnie w X i Y)
+        pos.x = region.x0 + region.w - (pos.x - region.x0);
+        pos.y = region.y0 + region.h - (pos.y - region.y0);
+      }
+
+      drawStimulus(pos.x, pos.y, pos.minSide);
+
+      if (i===0) maybeBeep(derivedX);
+    }
+
+    if (state.mode === 2) drawDivider();
+  }
+
+  // loop
+  let lastTs=null;
+  function loop(ts){
+    if(lastTs==null) lastTs=ts;
+    const dt = Math.min(0.05, (ts-lastTs)/1000);
+    lastTs=ts;
+    if(state.screen==="session" && state.running && !state.paused){
+      state.time += dt;
+      updateProgressUI();
+      if (state.time >= (Number(state.sessionDurationSec)||30)) {
+        // koniec czasu -> wracamy do ustawień
+        state._endedBy = "timeout";
+        btnStop.click();
+      }
+    }
+    drawScene();
+    requestAnimationFrame(loop);
+  }
+
+  function startSession(){
+  ensureAudio();
+  setScreen("session");
+  state.running=true;
+  state.paused=false;
+  state.lastBeepBucket=null;
+  state.time=0;
+
+  // Upewnij się, że dokument/APP ma fokus (żeby działały skróty klawiaturowe, np. Spacja = pauza)
+  const appFocusEl = document.getElementById("app");
+  if (appFocusEl) {
+    if (!appFocusEl.hasAttribute("tabindex")) appFocusEl.setAttribute("tabindex", "-1");
+    appFocusEl.focus({ preventScroll: true });
+  }
+  state.sessionDurationSec = (timeSlider ? parseInt(timeSlider.value,10) : state.sessionDurationSec) || 30;
+  document.getElementById("app")?.classList.remove("isPaused");
+  updateProgressUI();
+
+  setTimeout(() => {
+    if (document.documentElement.requestFullscreen) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    }
+  }, 50);
+}
+
+
+
+  // UI helpers
+  function allTrajButtons() {
+    return [
+      trajVLeft, trajVMid, trajVRight,
+      trajCircle, trajInfinity,
+      trajDiag1, trajDiag2,
+      trajHourV, trajHourH,
+      trajDiagsX,
+      trajHBot, trajHMid, trajHTop
+    ];
+  }
+
+  function setTraj(name, btn){
+    state.trajectory=name;
+    setActive(allTrajButtons(), btn);
+    state.lastBeepBucket=null;
+    updatePauseUI();
+    updateTrajScaleUI();
+    
+  updatePairUI();
+    updateRangeUI();
+  }
+
+  function setStim(name, btn){
+    state.stimulus = name;
+    setActive([stimDot, stimRing, stimSquare], btn);
+  }
+
+  function setMode(m){
+    state.mode = m;
+    setActive([mode1, mode2], m===1 ? mode1 : mode2);
+    updatePairUI();
+    updateRangeUI();
+  }
+
+  function setPairMode(pm){
+    state.pairMode = pm;
+    const map = { same: pairSame, mirror: pairMirror, opposite: pairOpposite, delay: pairDelay };
+    setActive([pairSame, pairMirror, pairOpposite, pairDelay], map[pm]);
+    updatePairUI();
+	    // w UI strona opóźnienia ma sens tylko gdy aktywne jest "opóźnienie"
+	    updateDelaySideUI();
+  }
+
+	  function setDelaySide(side){
+	    state.delaySide = side;
+	    updateDelaySideUI();
+	  }
+
+  function setDir(d){
+    state.dir = d;
+    setActive([dirCw, dirCcw], d>0 ? dirCw : dirCcw);
+    state.lastBeepBucket=null;
+  }
+
+  
+function updateSlidersUI(){
+  if (!speed || !speedVal) return;
+
+  speed.value = String(state.speed);
+  speedVal.textContent = state.speed.toFixed(1);
+
+  sizeMul.value = String(state.sizeMul.toFixed(1));
+  sizeVal.textContent = state.sizeMul.toFixed(1);
+
+  trajScale.value = String(state.trajScale.toFixed(1));
+  trajScaleVal.textContent = state.trajScale.toFixed(1);
+
+  pauseMs.value = String(state.pauseMs);
+  pauseVal.textContent = fmtSecFromMsHalf(state.pauseMs);
+
+  // Delay slider is expressed in seconds (0.5s step) but stored internally in ms
+  if (delayMs && delayVal) {
+    const dur = Number(state.sessionDurationSec) || 0;
+    delayMs.max = String(dur);
+    delayMs.step = "0.5";
+    const dsec = (Number(state.delayMs) || 0) / 1000;
+    delayMs.value = String((Math.round(dsec * 2) / 2).toFixed(1));
+    delayVal.textContent = `${(Math.round(dsec * 2) / 2).toFixed(1)} s`;
+  }
+
+if (timeSlider && timeVal) {
+    timeSlider.value = String(state.sessionDurationSec);
+    timeVal.textContent = `${state.sessionDurationSec} s`;
+  }
+
+  sound.checked = state.sound;
+}
+
+function updateTrajScaleUI(){
+  if (!trajScale || !trajScaleVal) return;
+  trajScale.value = String(state.trajScale);
+  trajScaleVal.textContent = Number(state.trajScale).toFixed(1);
+  }
+
+function updateRangeUI() {
+  // ZAKRES RUCHU ma być dostępny zarówno w trybie 1 figury jak i 2 figury.
+  // (wcześniej był ukrywany dla 2 figur – to powodowało „znikającą linijkę”).
+  trajScaleRow.style.display = "";
+
+  // nie blokujemy suwaka dla ∞ (ma działać normalnie)
+  trajScale.disabled = false;
+
+  // odśwież liczby po prawej
+  trajScale.value = String(state.trajScale.toFixed(1));
+  trajScaleVal.textContent = state.trajScale.toFixed(1);
+}
+
+
+
+  
+  function setPresetActive(id){
+  state.activePresetId = id;
+  presetButtons.forEach(b => b.classList.toggle("active", b.id === id));
+}
+
+
+  // PRESETY (5)
+  const PRESETS = {
+    p1: { // regulacja
+      mode: 1, pairMode: "same", delayMs: 0,
+      stimulus: "dot", sizeMul: 2.0,
+      trajectory: "circle", trajScale: 8.0,
+      speed: 2.0, dir: +1,
+      sound: false, pauseMs: 250
+    },
+    p2: { // śledzenie
+      mode: 1, pairMode: "same", delayMs: 0,
+      stimulus: "ring", sizeMul: 3.0,
+      trajectory: "vMid", trajScale: 8.0,
+      speed: 3.0, dir: +1,
+      sound: true, pauseMs: 250
+    },
+    p3: { // synchronia (2 figury)
+      mode: 2, pairMode: "same", delayMs: 0,
+      stimulus: "dot", sizeMul: 2.5,
+      trajectory: "circle", trajScale: 8.0,
+      speed: 3.0, dir: +1,
+      sound: true, pauseMs: 250
+    },
+    p4: { // przeciwlegle (2 figury)
+      mode: 2, pairMode: "opposite", delayMs: 0,
+      stimulus: "dot", sizeMul: 2.5,
+      trajectory: "infinity", trajScale: 8.0,
+      speed: 3.5, dir: +1,
+      sound: false, pauseMs: 250
+    },
+    p5: { // przerzutność
+      mode: 1, pairMode: "same", delayMs: 0,
+      stimulus: "ring", sizeMul: 3.0,
+      trajectory: "diagsx", trajScale: 8.0,
+      speed: 3.5, dir: +1,
+      sound: true, pauseMs: 250
+    }
+  };
+
+  function applyPreset(id){
+    const p = PRESETS[id];
+    if(!p) return;
+
+    setPresetActive(id);
+
+    state.delayMs = p.delayMs;
+    syncDelayMaxToDuration(false);
+    state.pauseMs = p.pauseMs;
+    state.speed = p.speed;
+    state.sizeMul = p.sizeMul;
+    state.trajScale = p.trajScale;
+    state.sound = p.sound;
+
+    setMode(p.mode);
+    setDir(p.dir);
+    updateRangeUI();
+
+    // stimulus
+    if (p.stimulus === "dot") setStim("dot", stimDot);
+    else if (p.stimulus === "ring") setStim("ring", stimRing);
+    else setStim("square", stimSquare);
+
+    // trajectory
+    const tmap = {
+      vLeft: trajVLeft, vMid: trajVMid, vRight: trajVRight,
+      hBot: trajHBot, hMid: trajHMid, hTop: trajHTop,
+      circle: trajCircle, infinity: trajInfinity,
+      diag1: trajDiag1, diag2: trajDiag2,
+      hourV: trajHourV, hourH: trajHourH,
+      diagsx: trajDiagsX
+    };
+    setTraj(p.trajectory, tmap[p.trajectory] || trajCircle);
+    updateRangeUI();
+
+
+    // pair mode (po trajektorii, bo przeciwlegle zależy od niej)
+    setPairMode(p.pairMode);
+
+    updateSlidersUI();
+    updatePauseUI();
+    updateTrajScaleUI();
+    updatePairUI();
+
+    state.lastBeepBucket = null;
+  }
+
+  // handlers
+  document.addEventListener("keydown", (e) => {
+  // pauza (tylko w trakcie sesji)
+  if ((e.key === " " || e.code === "Space") && state.screen === "session" && state.running) {
+    e.preventDefault();
+    togglePause();
+  }
+
+  // wyjście z fullscreen / stop
+  if (e.key === "Escape" && state.screen === "session") {
+    if (document.fullscreenElement) {
+      document.exitFullscreen().catch(() => {});
+    } else {
+      state._endedBy = "timeout";
+        btnStop.click();
+    }
+  }
+
+  // U = powrót do ustawień
+  if (e.key === "u" || e.key === "U") {
+    state.running = false;
+    state.paused = false;
+    btnPause.textContent = "PAUZA";
+    setScreen("settings");
+  }
+});
+
+  btnStartFromSettings.addEventListener("click", startSession);
+  btnSettings.addEventListener("click", () => setScreen("settings"));
+  btnBack.addEventListener("click", () => setScreen("start"));
+
+  function togglePause(next){
+    // Pauza działa tylko w trakcie ćwiczenia
+    if (state.screen !== "session" || !state.running) return;
+
+    state.paused = (typeof next === "boolean") ? next : !state.paused;
+    btnPause.textContent = state.paused ? "WZNÓW" : "PAUZA";
+
+    const appEl = document.getElementById("app");
+    if (appEl) appEl.classList.toggle("isPaused", state.paused);
+
+    if (state.paused) updatePauseTimeUI();
+  }
+
+  btnPause.addEventListener("click", () => togglePause());
+
+  btnStop.addEventListener("click", () => {
+    // zakończ sesję
+    if (state.screen === "session") {
+      logSession(state._endedBy || "stop");
+      state._endedBy = "";
+    }
+
+  state.running = false;
+  state.paused = false;
+  btnPause.textContent = "PAUZA";
+  document.getElementById("app")?.classList.remove("isPaused");
+  updateProgressUI();
+
+  // wyjście z fullscreen (jeśli był)
+  if (document.fullscreenElement && document.exitFullscreen) {
+    document.exitFullscreen().catch(() => {});
+  }
+
+  // wróć do ustawień
+  setScreen("settings");
+});
+
+
+  // preset clicks
+  p1.addEventListener("click", ()=>applyPreset("p1"));
+  p2.addEventListener("click", ()=>applyPreset("p2"));
+  p3.addEventListener("click", ()=>applyPreset("p3"));
+  p4.addEventListener("click", ()=>applyPreset("p4"));
+  p5.addEventListener("click", ()=>applyPreset("p5"));
+
+  // manual controls (wciąż dostępne)
+  trajVLeft.addEventListener("click",  () => setTraj("vLeft",  trajVLeft));
+  trajVMid.addEventListener("click",   () => setTraj("vMid",   trajVMid));
+  trajVRight.addEventListener("click", () => setTraj("vRight", trajVRight));
+  trajHBot.addEventListener("click", () => setTraj("hBot", trajHBot));
+  trajHMid.addEventListener("click", () => setTraj("hMid", trajHMid));
+  trajHTop.addEventListener("click", () => setTraj("hTop", trajHTop));
+  trajCircle.addEventListener("click",   () => setTraj("circle", trajCircle));
+  trajInfinity.addEventListener("click", () => setTraj("infinity", trajInfinity));
+  trajDiag1.addEventListener("click", () => setTraj("diag1", trajDiag1));
+  trajDiag2.addEventListener("click", () => setTraj("diag2", trajDiag2));
+  trajHourV.addEventListener("click", () => setTraj("hourV", trajHourV));
+  trajHourH.addEventListener("click", () => setTraj("hourH", trajHourH));
+  trajDiagsX.addEventListener("click", () => setTraj("diagsx", trajDiagsX));
+
+  mode1.addEventListener("click", () => setMode(1));
+  mode2.addEventListener("click", () => setMode(2));
+
+  pairSame.addEventListener("click", () => setPairMode("same"));
+  pairMirror.addEventListener("click", () => setPairMode("mirror"));
+  pairOpposite.addEventListener("click", () => setPairMode("opposite"));
+  pairDelay.addEventListener("click", () => setPairMode("delay"));
+
+ delayMs.addEventListener("input", () => {
+  // UI in seconds, internal store in ms
+  const secRaw = parseFloat(delayMs.value);
+  const sec = Number.isFinite(secRaw) ? Math.round(secRaw * 2) / 2 : 0;
+  const dur = Number(state.sessionDurationSec) || 0;
+  const clamped = Math.max(0, Math.min(sec, dur));
+  state.delayMs = Math.round(clamped * 1000);
+  delayMs.value = clamped.toFixed(1);
+  delayVal.textContent = `${clamped.toFixed(1)} s`;
+});
+
+
+
+	  // wybór strony opóźnienia (aktywny tylko gdy pairMode === "delay")
+	  delayLeftBtn?.addEventListener("click", () => {
+	    if (state.mode !== 2 || state.pairMode !== "delay") return;
+	    state.delaySide = "left";
+	    updateDelaySideUI();
+	  });
+	  delayRightBtn?.addEventListener("click", () => {
+	    if (state.mode !== 2 || state.pairMode !== "delay") return;
+	    state.delaySide = "right";
+	    updateDelaySideUI();
+	  });
+
+  stimDot.addEventListener("click", () => setStim("dot", stimDot));
+  stimRing.addEventListener("click", () => setStim("ring", stimRing));
+  stimSquare.addEventListener("click", () => setStim("square", stimSquare));
+
+  trajScale.addEventListener("input", () => {
+    state.trajScale = parseFloat(trajScale.value);
+    trajScaleVal.textContent = state.trajScale.toFixed(1);
+    state.lastBeepBucket=null;
+  });
+
+  pauseMs.addEventListener("input", () => {
+    state.pauseMs = parseInt(pauseMs.value,10);
+    pauseVal.textContent = fmtSecFromMsHalf(state.pauseMs);
+    state.lastBeepBucket=null;
+  });
+
+  speed.addEventListener("input", () => {
+    state.speed = parseFloat(speed.value);
+    speedVal.textContent = state.speed.toFixed(1);
+    state.lastBeepBucket=null;
+    updatePairUI(); // bo przeciwlegle zależy od omega
+  });
+
+  sizeMul.addEventListener("input", () => {
+    state.sizeMul = parseFloat(sizeMul.value);
+    sizeVal.textContent = state.sizeMul.toFixed(1);
+  });
+
+  if (timeSlider && timeVal) {
+    timeSlider.addEventListener("input", () => {
+  state.sessionDurationSec = parseInt(timeSlider.value, 10);
+  timeVal.textContent = `${state.sessionDurationSec} s`;
+  updateProgressUI();
+  if (state.paused) updatePauseTimeUI();
+
+  // Reset delay when duration changes, and cap max delay to duration
+  state.delayMs = 0;
+  if (delayMs && delayVal) {
+    delayMs.max = String(state.sessionDurationSec);
+    delayMs.step = "0.5";
+    delayMs.value = "0.0";
+    delayVal.textContent = "0.0 s";
+  }
+});
+  }
+
+// Synchronizacja suwaka opóźnienia z czasem ćwiczenia
+function syncDelayMaxToDuration(reset=false) {
+  if (!delayMs || !delayVal) return;
+  const dur = Number(state.sessionDurationSec) || 0;
+  delayMs.max = String(dur);
+  delayMs.step = "0.5";
+  const curSec = (Number(state.delayMs) || 0) / 1000;
+  const clamped = reset ? 0 : Math.max(0, Math.min(Math.round(curSec * 2) / 2, dur));
+  state.delayMs = Math.round(clamped * 1000);
+  delayMs.value = clamped.toFixed(1);
+  delayVal.textContent = `${clamped.toFixed(1)} s`;
+}
+
+dirCw.addEventListener("click", () => setDir(+1));
+  dirCcw.addEventListener("click", () => setDir(-1));
+
+  sound.addEventListener("change", () => state.sound = !!sound.checked);
+
+  
+  function initUI(){
+  resize();
+  setActive([mode1, mode2], mode1);
+  setActive([pairSame, pairMirror, pairOpposite, pairDelay], pairSame);
+  setActive([stimDot, stimRing, stimSquare], stimDot);
+  setActive(allTrajButtons(), trajCircle);
+  setActive([dirCw, dirCcw], dirCw);
+    // --- KLIKNIĘCIA: TRYB ---
+  mode1.onclick = () => setMode(1);
+  mode2.onclick = () => setMode(2);
+
+  // --- KLIKNIĘCIA: 2 figury / relacja ---
+  pairSame.onclick = () => setPairMode("same");
+  pairMirror.onclick = () => setPairMode("mirror");
+  pairOpposite.onclick = () => setPairMode("opposite");
+  pairDelay.onclick = () => setPairMode("delay");
+
+  // --- KLIKNIĘCIA: BODZIEC ---
+  stimDot.onclick = () => setStim("dot", stimDot);
+  stimRing.onclick = () => setStim("ring", stimRing);
+  stimSquare.onclick = () => setStim("square", stimSquare);
+
+  // --- KLIKNIĘCIA: KIERUNEK ---
+  dirCw.onclick = () => setDir(+1);
+  dirCcw.onclick = () => setDir(-1);
+
+  // --- KLIKNIĘCIA: TRAJEKTORIE ---
+  trajVLeft.onclick    = () => setTraj("vLeft", trajVLeft);
+  trajVMid.onclick     = () => setTraj("vMid", trajVMid);
+  trajVRight.onclick   = () => setTraj("vRight", trajVRight);
+
+  trajHBot.onclick     = () => setTraj("hBot", trajHBot);
+  trajHMid.onclick     = () => setTraj("hMid", trajHMid);
+  trajHTop.onclick     = () => setTraj("hTop", trajHTop);
+
+  trajDiag1.onclick    = () => setTraj("diag1", trajDiag1);
+  trajDiag2.onclick    = () => setTraj("diag2", trajDiag2);
+
+  trajCircle.onclick   = () => setTraj("circle", trajCircle);
+  trajInfinity.onclick = () => setTraj("infinity", trajInfinity);
+
+  trajHourV.onclick    = () => setTraj("hourV", trajHourV);
+  trajHourH.onclick    = () => setTraj("hourH", trajHourH);
+
+  trajDiagsX.onclick   = () => setTraj("diagsx", trajDiagsX);
+    // --- odśwież UI po podpięciu klików ---
+  updateSlidersUI();
+  updatePairUI();
+  updatePauseUI();
+  updateTrajScaleUI();
+  updateRangeUI();
+  syncDelayMaxToDuration(false);
+}
+   
+  
+ 
+    initUI();
+    applyPreset("p1");     // startujemy zawsze od bezpiecznego presetu regulacji
+    fitPanelWidthToTrajectory();
+    alignBottomActionsToTrajRight();
+    updateRangeUI();
+    // final alignment pass after layout settles
+    requestAnimationFrame(() => { fitPanelWidthToTrajectory(); alignRightControlsToTrajectory(); alignBottomActionsToTrajRight(); });
+    requestAnimationFrame(loop);
+    
+    
+    });
+</script>
+</body>
+</html>
